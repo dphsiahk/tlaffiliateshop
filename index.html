@@ -1,1 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Affiliate Shop — Full‑HD Single File App</title>
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* small extra styling to make layout full-HD friendly */
+    html,body,#app{height:100%}
+    .product-card img{height:200px;object-fit:cover}
+    @media (min-width:1280px){
+      .product-card img{height:260px}
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div id="app" class="min-h-screen flex flex-col">
+    <header class="bg-white shadow-md px-6 py-4 flex items-center justify-between">
+      <h1 class="text-2xl font-semibold">Affiliate Shop — FullHD App</h1>
+      <div class="flex items-center gap-4">
+        <button id="addProductBtn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">+ Add Affiliate Product</button>
+        <div class="text-sm">Commission: <input id="commissionPct" type="number" value="10" min="0" max="100" class="w-20 ml-2 px-2 py-1 border rounded"/>%</div>
+      </div>
+    </header>
 
+    <main class="flex-1 container mx-auto px-6 py-8">
+      <section class="mb-6 flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-600">Paste an affiliate link and this app will try to fetch metadata (title, image, price). If fetch fails — fill manually. Products are stored in your browser (LocalStorage).</p>
+        </div>
+        <div class="flex gap-2">
+          <button id="viewOrdersBtn" class="px-3 py-2 border rounded">View Orders</button>
+          <button id="exportBtn" class="px-3 py-2 border rounded">Export CSV</button>
+        </div>
+      </section>
+
+      <section id="productsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <!-- product cards injected here -->
+      </section>
+    </main>
+
+    <footer class="bg-white border-t px-6 py-4 text-sm text-gray-600">
+      Built for demo / starter integration. To accept real payments, wire a server-side payment flow (Stripe, Paystack, etc.). Orders are recorded locally and commission amounts are calculated and tracked in-browser.
+    </footer>
+  </div>
+
+  <!-- Add Product Modal -->
+  <div id="modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded shadow-lg max-w-2xl w-full">
+      <div class="px-6 py-4 border-b flex justify-between items-center">
+        <h3 class="font-semibold">Add Affiliate Product</h3>
+        <button id="closeModal" class="text-gray-500">✕</button>
+      </div>
+      <div class="p-6 space-y-4">
+        <label class="block text-sm">Affiliate URL</label>
+        <input id="affiliateUrl" class="w-full px-3 py-2 border rounded" placeholder="https://example.com/?ref=youraffiliateid" />
+        <div class="text-xs text-gray-500">Tip: You can paste Amazon/eBay/your-affiliate links. The app will attempt to fetch OG metadata using a public CORS proxy. If it can't, fill in details below.</div>
+
+        <div id="fetchingMsg" class="text-sm text-indigo-600 hidden">Attempting to fetch metadata…</div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm">Title</label>
+            <input id="title" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm">Price (USD)</label>
+            <input id="price" type="number" step="0.01" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+          <div>
+            <label class="block text-sm">Image URL</label>
+            <input id="image" class="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="block text-sm">Affiliate Link (final)</label>
+            <input id="finalLink" class="w-full px-3 py-2 border rounded" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="text-sm text-gray-600">Stock: <input id="stock" type="number" value="10" min="0" class="w-20 ml-2 px-2 py-1 border rounded"/></div>
+          <div class="flex gap-2">
+            <button id="saveProduct" class="px-4 py-2 bg-green-600 text-white rounded">Save Product</button>
+            <button id="previewFetch" class="px-4 py-2 border rounded">Fetch Metadata</button>
+          </div>
+        </div>
+
+        <div id="previewArea" class="hidden border rounded p-3">
+          <div class="flex gap-4 items-start">
+            <img id="previewImg" src="" alt="preview" class="w-28 h-28 object-cover rounded" />
+            <div>
+              <div id="previewTitle" class="font-semibold"></div>
+              <div id="previewPrice" class="text-green-600 font-bold mt-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-xs text-gray-500">By saving a product you are only storing its metadata locally. You'll be responsible for fulfilling orders and linking to the affiliate URL on checkout.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart drawer -->
+  <div id="cartDrawer" class="fixed right-0 top-0 h-full w-96 bg-white shadow-lg transform translate-x-full transition-transform">
+    <div class="p-4 border-b flex justify-between items-center">
+      <h3 class="font-semibold">Cart</h3>
+      <button id="closeCart" class="text-gray-500">✕</button>
+    </div>
+    <div class="p-4 flex-1 overflow-y-auto" id="cartItems"></div>
+    <div class="p-4 border-t">
+      <div class="flex justify-between mb-2"><div>Total:</div><div id="cartTotal">$0.00</div></div>
+      <div class="flex justify-between mb-2"><div>Your commission (est):</div><div id="cartCommission">$0.00</div></div>
+      <div class="flex gap-2">
+        <button id="checkoutMock" class="flex-1 px-3 py-2 bg-indigo-600 text-white rounded">Mock Checkout</button>
+        <button id="clearCart" class="px-3 py-2 border rounded">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orders modal -->
+  <div id="ordersModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded shadow-lg max-w-4xl w-full p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="font-semibold">Orders</h3>
+        <button id="closeOrders" class="text-gray-500">✕</button>
+      </div>
+      <div id="ordersList" class="space-y-4 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <script>
+    // Simple single-file Affiliate Shop
+    // Data storage keys
+    const STORAGE_PRODUCTS = 'af_products_v1';
+    const STORAGE_ORDERS = 'af_orders_v1';
+
+    // Utilities
+    const $ = sel => document.querySelector(sel);
+    const qs = sel => document.querySelectorAll(sel);
+
+    // State
+    let products = JSON.parse(localStorage.getItem(STORAGE_PRODUCTS) || '[]');
+    let orders = JSON.parse(localStorage.getItem(STORAGE_ORDERS) || '[]');
+    let cart = [];
+
+    // Elements
+    const productsGrid = $('#productsGrid');
+    const addProductBtn = $('#addProductBtn');
+    const modal = $('#modal');
+    const closeModal = $('#closeModal');
+    const affiliateUrl = $('#affiliateUrl');
+    const previewFetch = $('#previewFetch');
+    const saveProduct = $('#saveProduct');
+    const titleIn = $('#title');
+    const priceIn = $('#price');
+    const imageIn = $('#image');
+    const finalLinkIn = $('#finalLink');
+    const stockIn = $('#stock');
+    const fetchingMsg = $('#fetchingMsg');
+    const previewArea = $('#previewArea');
+    const previewImg = $('#previewImg');
+    const previewTitle = $('#previewTitle');
+    const previewPrice = $('#previewPrice');
+
+    const commissionPct = $('#commissionPct');
+    const cartDrawer = $('#cartDrawer');
+    const cartItems = $('#cartItems');
+    const cartTotalEl = $('#cartTotal');
+    const cartCommissionEl = $('#cartCommission');
+    const checkoutMock = $('#checkoutMock');
+    const clearCart = $('#clearCart');
+    const viewOrdersBtn = $('#viewOrdersBtn');
+    const ordersModal = $('#ordersModal');
+    const ordersList = $('#ordersList');
+    const closeOrders = $('#closeOrders');
+    const exportBtn = $('#exportBtn');
+
+    // Modal logic
+    addProductBtn.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      affiliateUrl.value=''; titleIn.value=''; priceIn.value=''; imageIn.value=''; finalLinkIn.value=''; stockIn.value='10';
+      previewArea.classList.add('hidden');
+    });
+    closeModal.addEventListener('click', ()=> { modal.classList.add('hidden'); modal.classList.remove('flex'); });
+
+    // Try to fetch metadata using a public CORS proxy
+    async function fetchMetadata(url){
+      // Use AllOrigins or any CORS proxy. NOTE: Public proxies can fail. If it fails, the user must fill manually.
+      const proxy = 'https://api.allorigins.win/raw?url=';
+      try{
+        fetchingMsg.classList.remove('hidden');
+        const res = await fetch(proxy + encodeURIComponent(url));
+        if(!res.ok) throw new Error('fetch failed');
+        const text = await res.text();
+        // Simple OG parsing
+        const ogTitle = text.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1]
+                    || text.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+        const ogImage = text.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)?.[1]
+                    || text.match(/<img[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*product|main|hero[^"']*["']/i)?.[1];
+        const price = text.match(/\$\s?([0-9]+(?:\.[0-9]{1,2})?)/)?.[1];
+        fetchingMsg.classList.add('hidden');
+        return {title: ogTitle, image: ogImage, price}
+      }catch(err){
+        fetchingMsg.classList.add('hidden');
+        console.warn('metadata fetch failed',err);
+        return null;
+      }
+    }
+
+    previewFetch.addEventListener('click', async ()=>{
+      const url = affiliateUrl.value.trim();
+      if(!url) return alert('Paste an affiliate URL first');
+      const meta = await fetchMetadata(url);
+      if(meta){
+        titleIn.value = meta.title || titleIn.value;
+        imageIn.value = meta.image || imageIn.value;
+        priceIn.value = meta.price || priceIn.value;
+        finalLinkIn.value = url;
+        previewImg.src = imageIn.value || '';
+        previewTitle.textContent = titleIn.value || 'No title';
+        previewPrice.textContent = priceIn.value? ('$'+Number(priceIn.value).toFixed(2)) : '';
+        previewArea.classList.remove('hidden');
+      } else {
+        alert('Could not fetch metadata. Please fill fields manually.');
+      }
+    });
+
+    saveProduct.addEventListener('click', ()=>{
+      const title = titleIn.value.trim();
+      const price = parseFloat(priceIn.value) || 0;
+      const image = imageIn.value.trim();
+      const link = finalLinkIn.value.trim() || affiliateUrl.value.trim();
+      const stock = parseInt(stockIn.value) || 0;
+      if(!title || !link){ return alert('Title and affiliate link are required'); }
+      const id = 'p_' + Date.now();
+      const p = {id,title,price,image,link,stock,createdAt: new Date().toISOString()};
+      products.unshift(p);
+      persistProducts();
+      renderProducts();
+      modal.classList.add('hidden'); modal.classList.remove('flex');
+    });
+
+    function persistProducts(){ localStorage.setItem(STORAGE_PRODUCTS, JSON.stringify(products)); }
+    function persistOrders(){ localStorage.setItem(STORAGE_ORDERS, JSON.stringify(orders)); }
+
+    function renderProducts(){
+      productsGrid.innerHTML='';
+      if(products.length===0){ productsGrid.innerHTML='<div class="col-span-full text-center text-gray-500">No products yet — add one using the "Add Affiliate Product" button.</div>'; return }
+      products.forEach(p=>{
+        const card = document.createElement('div');
+        card.className = 'product-card bg-white border rounded shadow-sm overflow-hidden flex flex-col';
+        card.innerHTML = `
+          <div class="h-48 bg-gray-100 flex items-center justify-center overflow-hidden">
+            <img src="${p.image || 'https://via.placeholder.com/400x300?text=No+Image'}" alt="${escapeHtml(p.title)}" class="w-full h-full object-cover"/>
+          </div>
+          <div class="p-4 flex-1 flex flex-col">
+            <h4 class="font-semibold mb-2">${escapeHtml(p.title)}</h4>
+            <div class="mt-auto flex items-center justify-between">
+              <div>
+                <div class="text-sm text-gray-500">Price</div>
+                <div class="text-lg font-bold">$${Number(p.price).toFixed(2)}</div>
+              </div>
+              <div class="flex flex-col gap-2">
+                <button data-id="${p.id}" class="addToCart px-3 py-2 bg-indigo-600 text-white rounded">Add to cart</button>
+                <button data-id="${p.id}" class="editP px-3 py-2 border rounded">Edit</button>
+              </div>
+            </div>
+          </div>
+        `;
+        productsGrid.appendChild(card);
+      });
+      // attach handlers
+      qs('.addToCart').forEach(btn=> btn.addEventListener('click', ()=> addToCart(btn.dataset.id)));
+      qs('.editP').forEach(btn=> btn.addEventListener('click', ()=> editProduct(btn.dataset.id)));
+    }
+
+    function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function editProduct(id){
+      const p = products.find(x=>x.id===id);
+      if(!p) return;
+      modal.classList.remove('hidden'); modal.classList.add('flex');
+      titleIn.value = p.title; priceIn.value = p.price; imageIn.value = p.image; finalLinkIn.value = p.link; stockIn.value = p.stock; affiliateUrl.value=''; previewArea.classList.add('hidden');
+      // Replace save handler temporarily
+      const handler = ()=>{
+        p.title = titleIn.value.trim(); p.price = parseFloat(priceIn.value)||0; p.image = imageIn.value.trim(); p.link = finalLinkIn.value.trim(); p.stock = parseInt(stockIn.value)||0;
+        persistProducts(); renderProducts(); modal.classList.add('hidden'); modal.classList.remove('flex');
+        saveProduct.removeEventListener('click', handler);
+      };
+      saveProduct.addEventListener('click', handler);
+    }
+
+    // Cart functions
+    function addToCart(productId){
+      const p = products.find(x=>x.id===productId);
+      if(!p) return alert('Product not found');
+      if(p.stock<=0) return alert('Out of stock');
+      const existing = cart.find(c=>c.id===productId);
+      if(existing) existing.qty +=1; else cart.push({id: productId, qty:1, price: p.price});
+      openCart(); renderCart();
+    }
+
+    function openCart(){ cartDrawer.style.transform = 'translateX(0)'; }
+    $('#closeCart').addEventListener('click', ()=> { cartDrawer.style.transform = 'translateX(100%)'; });
+
+    function renderCart(){
+      cartItems.innerHTML = '';
+      if(cart.length===0){ cartItems.innerHTML = '<div class="text-gray-500">Cart is empty</div>'; cartTotalEl.textContent='$0.00'; cartCommissionEl.textContent='$0.00'; return }
+      let total = 0;
+      let commission = 0;
+      cart.forEach(item=>{
+        const p = products.find(x=>x.id===item.id);
+        const lineTotal = p.price * item.qty; total += lineTotal;
+        const pct = parseFloat(commissionPct.value) || 0;
+        commission += (pct/100)*lineTotal;
+        const div = document.createElement('div');
+        div.className='mb-3 border-b pb-3';
+        div.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="font-semibold">${escapeHtml(p.title)}</div>
+              <div class="text-sm text-gray-500">$${p.price.toFixed(2)} x ${item.qty} = $${lineTotal.toFixed(2)}</div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <div class="flex gap-1">
+                <button class="dec px-2 py-1 border rounded" data-id="${item.id}">-</button>
+                <button class="inc px-2 py-1 border rounded" data-id="${item.id}">+</button>
+              </div>
+              <button class="remove text-sm text-red-600" data-id="${item.id}">Remove</button>
+            </div>
+          </div>
+        `;
+        cartItems.appendChild(div);
+      });
+      cartTotalEl.textContent = '$' + total.toFixed(2);
+      cartCommissionEl.textContent = '$' + commission.toFixed(2);
+      // attach cart handlers
+      qs('.inc').forEach(b=> b.addEventListener('click', ()=>{ const id=b.dataset.id; cart.find(x=>x.id===id).qty+=1; renderCart(); }));
+      qs('.dec').forEach(b=> b.addEventListener('click', ()=>{ const id=b.dataset.id; const it = cart.find(x=>x.id===id); it.qty= Math.max(1,it.qty-1); renderCart(); }));
+      qs('.remove').forEach(b=> b.addEventListener('click', ()=>{ const id=b.dataset.id; cart = cart.filter(x=>x.id!==id); renderCart(); }));
+    }
+
+    clearCart.addEventListener('click', ()=>{ cart=[]; renderCart(); });
+
+    // Mock checkout — records an order, reduces stock, and stores commission
+    checkoutMock.addEventListener('click', ()=>{
+      if(cart.length===0) return alert('Cart is empty');
+      const total = cart.reduce((s,it)=>{ const p=products.find(x=>x.id===it.id); return s + p.price*it.qty },0);
+      const pct = parseFloat(commissionPct.value)||0;
+      const commission = (pct/100)*total;
+      const order = {
+        id: 'o_'+Date.now(),
+        items: cart.map(it=> ({...it})),
+        total, commission, createdAt: new Date().toISOString(),
+      };
+      // reduce stock
+      order.items.forEach(it=>{
+        const p = products.find(x=>x.id===it.id);
+        if(p) p.stock = Math.max(0, p.stock - it.qty);
+      });
+      orders.unshift(order);
+      persistOrders(); persistProducts(); renderProducts();
+      cart = [];
+      renderCart();
+      alert('Mock checkout complete. Order recorded locally. Commission: $' + commission.toFixed(2));
+    });
+
+    // Orders view
+    viewOrdersBtn.addEventListener('click', ()=>{ ordersModal.classList.remove('hidden'); ordersModal.classList.add('flex'); renderOrders(); });
+    closeOrders.addEventListener('click', ()=>{ ordersModal.classList.add('hidden'); ordersModal.classList.remove('flex'); });
+
+    function renderOrders(){
+      ordersList.innerHTML='';
+      if(orders.length===0) { ordersList.innerHTML='<div class="text-gray-500">No orders yet</div>'; return }
+      orders.forEach(o=>{
+        const div = document.createElement('div');
+        div.className='border rounded p-3';
+        div.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="font-semibold">Order ${o.id}</div>
+              <div class="text-sm text-gray-500">${new Date(o.createdAt).toLocaleString()}</div>
+            </div>
+            <div class="text-right">
+              <div>Total: $${o.total.toFixed(2)}</div>
+              <div class="text-green-600">Commission: $${o.commission.toFixed(2)}</div>
+            </div>
+          </div>
+          <div class="mt-3 text-sm">
+            ${o.items.map(it=>{
+              const p = products.find(x=>x.id===it.id) || {title:'(deleted)'};
+              return `<div>${escapeHtml(p.title)} — qty: ${it.qty}</div>`
+            }).join('')}
+          </div>
+        `;
+        ordersList.appendChild(div);
+      });
+    }
+
+    // Export orders to CSV
+    exportBtn.addEventListener('click', ()=>{
+      if(orders.length===0) return alert('No orders to export');
+      const rows = [ ['order_id','created_at','total','commission','items'] ];
+      orders.forEach(o=> rows.push([o.id,o.createdAt,o.total.toFixed(2),o.commission.toFixed(2), o.items.map(it=>`${it.id}x${it.qty}`).join(';') ]));
+      const csv = rows.map(r=> r.map(c=> '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='orders.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    // Initialization
+    renderProducts();
+
+    // Helper: safe fetch demo fallback note in UI
+    // NOTE TO DEVELOPER: Public CORS proxies are unreliable. For production, create a small server endpoint that fetches product pages and returns parsed metadata (OG tags) securely.
+    // Also for accepting payments and receiving affiliate commission properly, integrate with Stripe/Paystack server-side and pass buyers to the affiliate link or use server-side redirect to preserve affiliate cookie.
+
+  </script>
+</body>
+</html>
